@@ -1,5 +1,7 @@
 """
 Financial records API routes — CRUD with filtering and pagination.
+
+DI improvement: FinancialRecordService injected via Depends.
 """
 
 from datetime import date
@@ -23,10 +25,14 @@ from app.services.financial_record_service import FinancialRecordService
 router = APIRouter(prefix="/records", tags=["Financial Records"])
 
 
-def _get_record_service(db: AsyncSession) -> FinancialRecordService:
-    """Factory for FinancialRecordService — wires repository dependency."""
+# --- Service dependency (injectable for testing) ---
+
+def get_record_service(db: AsyncSession = Depends(get_db)) -> FinancialRecordService:
+    """Provide FinancialRecordService with its repository dependency injected."""
     return FinancialRecordService(FinancialRecordRepository(db))
 
+
+# --- Routes ---
 
 @router.post(
     "",
@@ -37,13 +43,10 @@ def _get_record_service(db: AsyncSession) -> FinancialRecordService:
 )
 async def create_record(
     request: RecordCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.RECORD_CREATE)
-    ),
+    service: FinancialRecordService = Depends(get_record_service),
+    current_user: User = Depends(PermissionChecker(Permission.RECORD_CREATE)),
 ):
-    service = _get_record_service(db)
-    record = await service.create_record(
+    return await service.create_record(
         amount=request.amount,
         record_type=request.type,
         category=request.category,
@@ -51,7 +54,6 @@ async def create_record(
         description=request.description,
         created_by=current_user.id,
     )
-    return record
 
 
 @router.get(
@@ -70,12 +72,9 @@ async def list_records(
     date_from: date | None = Query(None, description="Filter records from this date"),
     date_to: date | None = Query(None, description="Filter records up to this date"),
     search: str | None = Query(None, description="Search in description"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.RECORD_VIEW)
-    ),
+    service: FinancialRecordService = Depends(get_record_service),
+    current_user: User = Depends(PermissionChecker(Permission.RECORD_VIEW)),
 ):
-    service = _get_record_service(db)
     records, total = await service.list_records(
         page=page,
         page_size=page_size,
@@ -103,12 +102,9 @@ async def list_records(
 )
 async def get_record(
     record_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.RECORD_VIEW)
-    ),
+    service: FinancialRecordService = Depends(get_record_service),
+    current_user: User = Depends(PermissionChecker(Permission.RECORD_VIEW)),
 ):
-    service = _get_record_service(db)
     return await service.get_record(record_id)
 
 
@@ -121,12 +117,9 @@ async def get_record(
 async def update_record(
     record_id: int,
     request: RecordUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.RECORD_UPDATE)
-    ),
+    service: FinancialRecordService = Depends(get_record_service),
+    current_user: User = Depends(PermissionChecker(Permission.RECORD_UPDATE)),
 ):
-    service = _get_record_service(db)
     return await service.update_record(
         record_id=record_id,
         amount=request.amount,
@@ -145,11 +138,8 @@ async def update_record(
 )
 async def delete_record(
     record_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.RECORD_DELETE)
-    ),
+    service: FinancialRecordService = Depends(get_record_service),
+    current_user: User = Depends(PermissionChecker(Permission.RECORD_DELETE)),
 ):
-    service = _get_record_service(db)
     await service.delete_record(record_id)
     return None

@@ -1,5 +1,8 @@
 """
 User management API routes — RBAC-protected user operations.
+
+DI improvement: UserService is injected via FastAPI Depends rather than
+a factory function, making unit testing with mocks trivial.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -22,10 +25,14 @@ from app.services.user_service import UserService
 router = APIRouter(prefix="/users", tags=["User Management"])
 
 
-def _get_user_service(db: AsyncSession) -> UserService:
-    """Factory for UserService — wires repository dependency."""
+# --- Service dependency (injectable for testing) ---
+
+def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
+    """Provide UserService with its repository dependency injected."""
     return UserService(UserRepository(db))
 
+
+# --- Routes ---
 
 @router.get(
     "/me",
@@ -48,12 +55,9 @@ async def get_me(
 async def list_users(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.USER_VIEW_ALL)
-    ),
+    service: UserService = Depends(get_user_service),
+    current_user: User = Depends(PermissionChecker(Permission.USER_VIEW_ALL)),
 ):
-    service = _get_user_service(db)
     users, total = await service.list_users(page=page, page_size=page_size)
     return UserListResponse(
         users=[UserResponse.model_validate(u) for u in users],
@@ -71,12 +75,9 @@ async def list_users(
 )
 async def get_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.USER_VIEW_ALL)
-    ),
+    service: UserService = Depends(get_user_service),
+    current_user: User = Depends(PermissionChecker(Permission.USER_VIEW_ALL)),
 ):
-    service = _get_user_service(db)
     return await service.get_user(user_id)
 
 
@@ -89,12 +90,9 @@ async def get_user(
 async def update_user(
     user_id: int,
     request: UserUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.USER_MANAGE)
-    ),
+    service: UserService = Depends(get_user_service),
+    current_user: User = Depends(PermissionChecker(Permission.USER_MANAGE)),
 ):
-    service = _get_user_service(db)
     return await service.update_user(
         user_id,
         full_name=request.full_name,
@@ -112,12 +110,9 @@ async def update_user(
 async def assign_role(
     user_id: int,
     request: RoleUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.USER_ASSIGN_ROLE)
-    ),
+    service: UserService = Depends(get_user_service),
+    current_user: User = Depends(PermissionChecker(Permission.USER_ASSIGN_ROLE)),
 ):
-    service = _get_user_service(db)
     return await service.assign_role(user_id, request.role)
 
 
@@ -130,10 +125,7 @@ async def assign_role(
 async def update_status(
     user_id: int,
     request: StatusUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(
-        PermissionChecker(Permission.USER_MANAGE)
-    ),
+    service: UserService = Depends(get_user_service),
+    current_user: User = Depends(PermissionChecker(Permission.USER_MANAGE)),
 ):
-    service = _get_user_service(db)
     return await service.update_status(user_id, request.status)

@@ -1,5 +1,8 @@
 """
 Authentication API routes — register, login, and token refresh.
+
+DI improvement: AuthService is injected via FastAPI Depends rather than
+a factory function, making unit testing with mocks trivial.
 """
 
 from fastapi import APIRouter, Depends
@@ -22,10 +25,14 @@ from app.services.auth_service import AuthService
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-def _get_auth_service(db: AsyncSession) -> AuthService:
-    """Factory for AuthService — wires repository dependency."""
+# --- Service dependency (injectable for testing) ---
+
+def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
+    """Provide AuthService with its repository dependency injected."""
     return AuthService(UserRepository(db))
 
+
+# --- Routes ---
 
 @router.post(
     "/register",
@@ -36,16 +43,14 @@ def _get_auth_service(db: AsyncSession) -> AuthService:
 )
 async def register(
     request: RegisterRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ):
-    service = _get_auth_service(db)
-    user = await service.register(
+    return await service.register(
         email=request.email,
         username=request.username,
         password=request.password,
         full_name=request.full_name,
     )
-    return user
 
 
 @router.post(
@@ -56,9 +61,8 @@ async def register(
 )
 async def login(
     request: LoginRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ):
-    service = _get_auth_service(db)
     return await service.login(email=request.email, password=request.password)
 
 
@@ -70,8 +74,7 @@ async def login(
 )
 async def refresh_token(
     request: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
     _current_user: User = Depends(get_current_user),
 ):
-    service = _get_auth_service(db)
     return await service.refresh_token(refresh_token=request.refresh_token)
